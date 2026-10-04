@@ -1,0 +1,7 @@
+method,input,loss_method,validation_threshold,validation_dice,validation_iou,validation_foreground_ratio,test_status
+RGB-only U-Net + BCE,RGB,BCE,0.25,0.354316,0.217112,,Final held-out test evaluated
+RGB-only U-Net + BCE + Dice,RGB,BCE + Dice,0.3,0.365778,0.226002,2.577,Final held-out test evaluated
+RGB-D U-Net + BCE + Dice,RGB + depth,BCE + Dice,0.35,0.373455,0.231875,2.666,Final held-out test evaluated
+Average-GT spatial-prior baseline,None,Mean of 393 training GT masks,0.2,0.37924,0.238432,,Final held-out test evaluated
+RGB-only U-Net + Focal + Dice,RGB,Focal + Dice (gamma=2.0),0.45,0.366954,0.227173,2.576,Validation-only experiment
+RGB-only U-Net + Tversky,RGB,"Tversky (alpha=0.7, beta=0.3)",0.5,0.140648,0.075686,13.278258,Validation-only experiment

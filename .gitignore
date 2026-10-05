@@ -8,7 +8,3 @@ __pycache__/
 # Virtual environments
 .venv/
 venv/
-
-# Local datasets
-Dataset/
-Dataset (With Summer GT)/

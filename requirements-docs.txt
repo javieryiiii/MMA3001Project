@@ -1,0 +1,2 @@
+# Documentation dependencies
+pdoc==16.0.0

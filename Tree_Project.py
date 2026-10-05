@@ -1,7 +1,9 @@
-"""Stage 4: train and evaluate an RGB-only baseline U-Net.
+"""Shared data, preprocessing, split, model, and metric utilities.
 
-The preprocessing assumption is stated in the Stage 3 functions below. This
-script does not modify original images, use depth or Winter data, or augment.
+This module provides Summer image pairing, RGB/GT preprocessing, deterministic
+tree-level splitting, the RGB U-Net, and segmentation metrics. Its command-line
+workflow evaluates the original RGB+BCE baseline checkpoint on the held-out
+test split; reusable training helpers are also available below.
 """
 
 from pathlib import Path
@@ -35,7 +37,15 @@ TEXT_SUFFIXES = {".md", ".py", ".ipynb", ".txt", ".json"}
 
 
 def scan_images(dataset_dir):
-	"""Return image paths grouped by their tree, season, and capture tag."""
+	"""Index recognized PNG files in the flat dataset directory.
+
+	Args:
+		dataset_dir: Directory containing modality-tagged PNG files.
+
+	Returns:
+		A mapping from ``(tree_id, season, capture_tag)`` to modality/path
+		mappings. Filenames that do not match ``IMAGE_PATTERN`` are ignored.
+	"""
 	images = {}
 	for path in sorted(dataset_dir.glob("*.png")):
 		match = IMAGE_PATTERN.match(path.name)
@@ -49,7 +59,16 @@ def scan_images(dataset_dir):
 
 
 def find_summer_triplets(images):
-	"""Find complete Summer RGB, depth, and GT groups plus missing files."""
+	"""Separate complete Summer RGB/depth/GT groups from incomplete groups.
+
+	Args:
+		images: Mapping returned by :func:`scan_images`.
+
+	Returns:
+		A pair ``(complete, unmatched)``. ``complete`` maps sample keys to
+		modalities containing RGB, D, and GT. ``unmatched`` maps each incomplete
+		Summer key to a sorted list of missing modality names.
+	"""
 	summer = {
 		key: modalities for key, modalities in images.items()
 		if key[1] == "Summer"
@@ -68,7 +87,15 @@ def find_summer_triplets(images):
 
 
 def find_summer_rgb_gt_pairs(images):
-	"""Find labelled Summer RGB/GT pairs without including depth as an input."""
+	"""Select Summer samples that have both RGB and GT files.
+
+	Args:
+		images: Mapping returned by :func:`scan_images`.
+
+	Returns:
+		A mapping from matching sample keys to their original modality/path
+		mappings. Other modalities, such as D, remain present in each mapping.
+	"""
 	return {
 		key: modalities for key, modalities in images.items()
 		if key[1] == "Summer" and {"RGB", "GT"} <= modalities.keys()
@@ -76,7 +103,15 @@ def find_summer_rgb_gt_pairs(images):
 
 
 def find_winter_pairs(images):
-	"""Find complete Winter RGB-depth pairs without looking for Winter GT."""
+	"""Separate complete Winter RGB/depth pairs from incomplete groups.
+
+	Args:
+		images: Mapping returned by :func:`scan_images`.
+
+	Returns:
+		A pair ``(complete, unmatched)``. Complete groups contain RGB and D;
+		unmatched groups map sample keys to sorted missing-modality names.
+	"""
 	winter = {
 		key: modalities for key, modalities in images.items()
 		if key[1] == "Winter"
@@ -95,7 +130,18 @@ def find_winter_pairs(images):
 
 
 def load_image(path, flags):
-	"""Load one image with OpenCV and fail clearly if it cannot be read."""
+	"""Read an image with OpenCV.
+
+	Args:
+		path: Image path accepted by :func:`cv2.imread` after string conversion.
+		flags: OpenCV read mode, such as ``cv2.IMREAD_COLOR``.
+
+	Returns:
+		The decoded image array in OpenCV channel order.
+
+	Raises:
+		RuntimeError: If OpenCV cannot decode the file.
+	"""
 	image = cv2.imread(str(path), flags)
 	if image is None:
 		raise RuntimeError(f"OpenCV could not read: {path}")
@@ -242,7 +288,27 @@ def display_alignment_hypothesis(summer_triplets, number_of_examples=6):
 
 
 def prepare_rgb_gt_dataset(summer_pairs):
-	"""Preprocess matched RGB/GT images into float32 arrays without saving files."""
+	"""Prepare matched Summer RGB/GT samples using the established RGB transform.
+
+	RGB files must be 480x640 and GT masks must be binary 256x256 PNGs with
+	values 0 or 255. RGB is converted from BGR to RGB, cropped with columns
+	80:560, resized to 256x256 using ``INTER_AREA``, and divided by 255. GT
+	geometry is unchanged and values are converted to 0/1.
+
+	Args:
+		summer_pairs: Mapping from sample keys to modality/path mappings with RGB
+			and GT entries.
+
+	Returns:
+		A tuple ``(inputs, targets, tree_ids, sample_keys)``. Inputs have shape
+		``(N, 256, 256, 3)`` and targets ``(N, 256, 256, 1)``, both float32.
+		RGB values are in [0, 1]; targets are binary. IDs and keys follow sorted
+		sample-key order.
+
+	Raises:
+		ValueError: If source RGB/GT dimensions or GT values violate the expected
+			input format.
+	"""
 	sample_keys = sorted(summer_pairs)
 	inputs = np.empty((len(sample_keys), 256, 256, 3), dtype=np.float32)
 	targets = np.empty((len(sample_keys), 256, 256, 1), dtype=np.float32)
@@ -270,7 +336,23 @@ def prepare_rgb_gt_dataset(summer_pairs):
 
 
 def split_by_tree(tree_ids, sample_keys, seed=RANDOM_SEED):
-	"""Assign whole tree identities to reproducible train/validation/test splits."""
+	"""Assign samples to deterministic splits while keeping each tree intact.
+
+	Unique tree IDs are sorted by ``np.unique`` and permuted by a NumPy generator
+	initialized with ``seed``. The first floor(70%) of trees are training, the
+	next floor(15%) are validation, and the remainder are test. Sample order
+	within each returned index/key list follows the input order.
+
+	Args:
+		tree_ids: One tree ID per sample.
+		sample_keys: One corresponding sample key per sample.
+		seed: Seed used to permute the unique tree IDs.
+
+	Returns:
+		A mapping for ``train``, ``validation``, and ``test``. Each entry contains
+		an int32 index array, a set of assigned tree IDs, and the corresponding
+		sample keys.
+	"""
 	unique_tree_ids = np.unique(tree_ids)
 	shuffled_tree_ids = np.random.default_rng(seed).permutation(unique_tree_ids)
 	train_tree_count = int(len(unique_tree_ids) * 0.70)
@@ -303,7 +385,17 @@ def split_by_tree(tree_ids, sample_keys, seed=RANDOM_SEED):
 
 
 def verify_tree_split_isolation(splits):
-	"""Raise an error if tree IDs overlap or any split is missing tree groups."""
+	"""Check that tree IDs are not assigned to multiple split groups.
+
+	Args:
+		splits: Mapping with ``train``, ``validation``, and ``test`` entries, each
+		containing a ``tree_ids`` set.
+
+	Raises:
+		AssertionError: If any pair of split tree-ID sets overlaps or if the
+			union size differs from the sum of their sizes, indicating duplicate
+			assignment. This check does not verify expected split sizes or missing IDs.
+	"""
 	train_trees = splits["train"]["tree_ids"]
 	validation_trees = splits["validation"]["tree_ids"]
 	test_trees = splits["test"]["tree_ids"]
@@ -351,7 +443,15 @@ def display_processed_split_examples(inputs, targets, splits, examples_per_split
 
 
 def convolution_block(input_tensor, filters):
-	"""Apply two same-padded ReLU convolutions to build U-Net features."""
+	"""Apply two same-padded 3x3 ReLU convolutions.
+
+	Args:
+		input_tensor: Keras feature tensor.
+		filters: Number of output channels for each convolution.
+
+	Returns:
+		Feature tensor with the same spatial dimensions and ``filters`` channels.
+	"""
 	output = tf.keras.layers.Conv2D(
 		filters, 3, activation="relu", padding="same", kernel_initializer="he_normal"
 	)(input_tensor)
@@ -362,7 +462,20 @@ def convolution_block(input_tensor, filters):
 
 
 def build_unet(input_shape=(256, 256, 3), base_filters=16):
-	"""Build a compact U-Net with encoder features connected to decoder stages."""
+	"""Build and compile the project U-Net with skip-connected encoder/decoder stages.
+
+	Args:
+		input_shape: Height, width, and channel count. The project RGB models use
+			``(256, 256, 3)``; the RGB-D model supplies four channels.
+		base_filters: Width of the first encoder stage; subsequent stages scale
+			this value by powers of two.
+		Input height and width must be divisible by 16 for the four pooling stages
+		and skip connections to align.
+
+	Returns:
+		A compiled Keras model with a one-channel sigmoid probability output of
+		the same spatial size as the input.
+	"""
 	inputs = tf.keras.Input(shape=input_shape)
 	filters = [base_filters, base_filters * 2, base_filters * 4, base_filters * 8]
 	encoder_features = []
@@ -396,7 +509,16 @@ def build_unet(input_shape=(256, 256, 3), base_filters=16):
 
 
 def dice_coefficient(y_true, y_pred):
-	"""Measure mask overlap with smoothing so empty masks remain well-defined."""
+	"""Compute mean soft Dice over a batch of segmentation masks.
+
+	Args:
+		y_true: Ground-truth tensor shaped ``(N, H, W, C)``.
+		y_pred: Soft prediction probabilities with the same shape.
+
+	Returns:
+		Scalar batch mean of per-image Dice values, using ``1e-6`` smoothing in
+		the numerator and denominator.
+	"""
 	y_true = tf.cast(y_true, tf.float32)
 	y_pred = tf.cast(y_pred, tf.float32)
 	intersection = tf.reduce_sum(y_true * y_pred, axis=(1, 2, 3))
@@ -406,7 +528,16 @@ def dice_coefficient(y_true, y_pred):
 
 
 def intersection_over_union(y_true, y_pred):
-	"""Measure predicted/true mask intersection over their union."""
+	"""Compute mean soft intersection over union (IoU) over a batch.
+
+	Args:
+		y_true: Ground-truth tensor shaped ``(N, H, W, C)``.
+		y_pred: Soft prediction probabilities with the same shape.
+
+	Returns:
+		Scalar batch mean of per-image IoU values, using ``1e-6`` smoothing in
+		the numerator and denominator.
+	"""
 	y_true = tf.cast(y_true, tf.float32)
 	y_pred = tf.cast(y_pred, tf.float32)
 	intersection = tf.reduce_sum(y_true * y_pred, axis=(1, 2, 3))
@@ -416,7 +547,22 @@ def intersection_over_union(y_true, y_pred):
 
 
 def binary_dice_coefficient(y_true, y_pred_binary):
-	"""Calculate mean per-image Dice for already-binary prediction masks."""
+	"""Calculate mean per-image binary Dice for a batch of masks.
+
+	Ground truth is binarized with ``>= 0.5`` and predictions are converted to
+	boolean. All non-batch axes are reduced independently per image.
+
+	Args:
+		y_true: Ground-truth array with shape ``(N, ...)``.
+		y_pred_binary: Binary prediction array with the same shape.
+
+	Returns:
+		Python float containing the mean per-image Dice; ``1e-6`` smoothing keeps
+		empty-mask comparisons defined.
+
+	Raises:
+		ValueError: If the input shapes differ.
+	"""
 	y_true_binary = np.asarray(y_true) >= 0.5
 	y_pred_binary = np.asarray(y_pred_binary, dtype=bool)
 	if y_true_binary.shape != y_pred_binary.shape:
@@ -428,7 +574,21 @@ def binary_dice_coefficient(y_true, y_pred_binary):
 
 
 def binary_intersection_over_union(y_true, y_pred_binary):
-	"""Calculate mean per-image IoU for already-binary prediction masks."""
+	"""Calculate mean per-image binary IoU for a batch of masks.
+
+	Ground truth is binarized with ``>= 0.5`` and predictions are converted to
+	boolean. All non-batch axes are reduced independently per image.
+
+	Args:
+		y_true: Ground-truth array with shape ``(N, ...)``.
+		y_pred_binary: Binary prediction array with the same shape.
+
+	Returns:
+		Python float containing the mean per-image IoU, with ``1e-6`` smoothing.
+
+	Raises:
+		ValueError: If the input shapes differ.
+	"""
 	y_true_binary = np.asarray(y_true) >= 0.5
 	y_pred_binary = np.asarray(y_pred_binary, dtype=bool)
 	if y_true_binary.shape != y_pred_binary.shape:
@@ -469,7 +629,20 @@ def report_validation_probability_stats(probabilities, sample_keys, number_of_ex
 
 
 def score_validation_thresholds(y_true, probabilities, thresholds=VALIDATION_THRESHOLDS):
-	"""Calculate mean per-image binary Dice and IoU on validation masks only."""
+	"""Score binary masks at each supplied probability threshold.
+
+	Predictions use ``probabilities >= threshold`` and the binary metric helpers
+	return mean per-image Dice and IoU. No threshold is selected by this function.
+
+	Args:
+		y_true: Ground-truth array shaped ``(N, H, W, C)``.
+		probabilities: Soft predictions with the same shape.
+		thresholds: Iterable of probability cutoffs to evaluate.
+
+	Returns:
+		List of dictionaries, one per threshold, with ``threshold``, ``dice``,
+		and ``iou`` keys.
+	"""
 	results = []
 	for threshold in thresholds:
 		predicted_binary = probabilities >= threshold

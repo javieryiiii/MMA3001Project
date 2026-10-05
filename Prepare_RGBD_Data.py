@@ -1,4 +1,10 @@
-"""Verify and prepare Summer RGB-D inputs and 2D skeleton targets."""
+"""Verify Summer RGB-D-GT triplets and inspect their prepared array format.
+
+This diagnostic checks source image shapes, types, depth-channel equality,
+source-scale depth statistics, and seed-42 split correspondence. Its prepared
+depth channel remains on the source numeric scale; it does not infer physical
+units or train a model.
+"""
 
 from collections import Counter
 from pathlib import Path
@@ -15,6 +21,11 @@ DEPTH_PERCENTILES = (1, 5, 10, 25, 50, 75, 90, 95, 99)
 
 
 def new_image_summary():
+    """Create empty shape/type counters and aggregate minimum/maximum fields.
+
+    Returns:
+        Mutable summary dictionary populated by :func:`record_image`.
+    """
     return {
         "shapes": Counter(),
         "dtypes": Counter(),
@@ -24,6 +35,12 @@ def new_image_summary():
 
 
 def record_image(summary, image):
+    """Update a summary in place with one image's shape, dtype, and value range.
+
+    Args:
+        summary: Dictionary returned by :func:`new_image_summary`.
+        image: NumPy image array to add to the aggregate.
+    """
     summary["shapes"][image.shape] += 1
     summary["dtypes"][str(image.dtype)] += 1
     image_minimum = float(np.min(image))
@@ -35,6 +52,12 @@ def record_image(summary, image):
 
 
 def report_image_summary(name, summary):
+    """Print the aggregated source properties stored in an image summary.
+
+    Args:
+        name: Modality label displayed in the report.
+        summary: Populated summary dictionary.
+    """
     print(f"{name} original shapes: {dict(summary['shapes'])}")
     print(f"{name} dtype counts: {dict(summary['dtypes'])}")
     print(
@@ -44,6 +67,15 @@ def report_image_summary(name, summary):
 
 
 def inspect_triplets(triplets):
+    """Report source properties and validate depth channels and image sizes.
+
+    Args:
+        triplets: Mapping from sample keys to RGB/D/GT paths.
+
+    Raises:
+        ValueError: If a depth image has unsupported or nonidentical channels,
+            or if RGB/depth/GT spatial sizes differ from the project assumptions.
+    """
     summaries = {
         modality: new_image_summary() for modality in ("RGB", "D", "GT")
     }
@@ -127,6 +159,23 @@ def inspect_triplets(triplets):
 
 
 def prepare_rgbd_inputs(triplets):
+    """Append one source-scale depth channel to baseline-preprocessed RGB.
+
+    RGB is processed by ``baseline.prepare_rgb_gt_dataset``. Depth is reduced
+    to its first channel when stored as a three-channel image, cropped using
+    columns 80:560, and resized to 256x256 with ``INTER_AREA``. This helper does
+    not divide depth by 255; returned depth values remain on the source scale.
+    The main diagnostic calls :func:`inspect_triplets` to check source channel
+    equality before preparing the arrays.
+
+    Args:
+        triplets: Mapping from sample keys to RGB/D/GT paths.
+
+    Returns:
+        A tuple ``(rgbd_inputs, targets, tree_ids, sample_keys)``. RGB-D inputs
+        have shape ``(N, 256, 256, 4)`` with RGB in channels 0:3 and source-scale
+        depth in channel 3; targets have shape ``(N, 256, 256, 1)``.
+    """
     rgb_inputs, targets, tree_ids, sample_keys = baseline.prepare_rgb_gt_dataset(
         triplets
     )
@@ -149,6 +198,15 @@ def prepare_rgbd_inputs(triplets):
 
 
 def report_split_comparison(reference_splits, rgbd_sample_keys):
+    """Print RGB-D sample and tree counts against the reference tree split.
+
+    Args:
+        reference_splits: Split mapping returned by ``baseline.split_by_tree``.
+        rgbd_sample_keys: Sample keys prepared for RGB-D data.
+
+    The report includes per-split counts, tree-set matches, and exact sample-key
+    coverage. Results are printed; this helper does not raise on a mismatch.
+    """
     rgbd_tree_ids = np.array([key[0] for key in rgbd_sample_keys])
     all_counts_match = True
 
@@ -181,6 +239,17 @@ def report_split_comparison(reference_splits, rgbd_sample_keys):
 
 
 def display_examples(rgbd_inputs, targets, sample_keys, train_tree_ids):
+    """Save RGB, source-scale depth, and GT examples from training trees only.
+
+    Args:
+        rgbd_inputs: Prepared ``(N, 256, 256, 4)`` RGB-D array.
+        targets: Prepared ``(N, 256, 256, 1)`` binary GT array.
+        sample_keys: Key corresponding to each prepared sample.
+        train_tree_ids: Tree IDs whose samples may be displayed.
+
+    Raises:
+        ValueError: If no samples belong to the requested training trees.
+    """
     indices = [
         index for index, key in enumerate(sample_keys)
         if key[0] in train_tree_ids
@@ -213,6 +282,7 @@ def display_examples(rgbd_inputs, targets, sample_keys, train_tree_ids):
 
 
 def main():
+    """Run the RGB-D preparation checks and display training-split examples."""
     if not baseline.DATASET_DIR.is_dir():
         raise FileNotFoundError(f"Dataset folder not found: {baseline.DATASET_DIR}")
 

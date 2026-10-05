@@ -1,4 +1,10 @@
-"""Train a controlled RGB-D U-Net experiment using BCE + Dice loss."""
+"""Train the controlled Summer RGB-D U-Net experiment with BCE + Dice loss.
+
+The model input combines the baseline RGB channels with one depth channel. The
+RGB and depth data use the same 80-pixel-per-side centre crop and 256x256 resize;
+RGB and depth are each divided by 255. Depth scaling is numerical only and does
+not assign physical units. Training uses the baseline tree-level split.
+"""
 
 from pathlib import Path
 
@@ -18,7 +24,28 @@ DEPTH_SCALE = 255.0
 
 
 def prepare_rgbd_dataset(triplets):
-    """Apply the baseline RGB/GT preprocessing and append normalized depth."""
+    """Prepare RGB, one depth channel, and GT targets for RGB-D inference/training.
+
+    Each mapping entry must provide RGB, D, and GT paths for one sample. RGB must
+    be 480x640x3; depth must be uint8 480x640x3 with identical channels; GT must
+    be a binary 0/255 mask at ``baseline.TARGET_SIZE``. RGB is converted from BGR,
+    centre-cropped at columns 80:560, resized with ``INTER_AREA``, and divided by
+    255. The first depth channel receives the same spatial transform and is
+    divided by 255; this is source-scale normalization, not physical-distance
+    conversion. GT geometry is unchanged and values become 0/1.
+
+    Args:
+        triplets: Mapping from sample keys to RGB/D/GT path mappings.
+
+    Returns:
+        A tuple ``(inputs, targets, tree_ids, sample_keys)``. Inputs have shape
+        ``(N, 256, 256, 4)`` and contain RGB then depth; targets have shape
+        ``(N, 256, 256, 1)``. Arrays are float32 and sample keys are sorted.
+
+    Raises:
+        ValueError: If source dimensions, depth dtype/channels, or GT dimensions/
+            values do not match the required format.
+    """
     sample_keys = sorted(triplets)
     inputs = np.empty((len(sample_keys), *INPUT_SHAPE), dtype=np.float32)
     targets = np.empty((len(sample_keys), 256, 256, 1), dtype=np.float32)
@@ -74,7 +101,15 @@ def prepare_rgbd_dataset(triplets):
 
 
 def build_model():
-    """Build the baseline U-Net with four input channels and matching settings."""
+    """Build and compile the baseline U-Net for four-channel RGB-D input.
+
+    The RGB-D model uses the shared U-Net architecture with input shape
+    ``(256, 256, 4)``, Adam at 1e-3, BCE + Dice loss, and the baseline Dice/IoU
+    metrics.
+
+    Returns:
+        Compiled Keras model with one sigmoid output channel.
+    """
     tf.keras.utils.set_random_seed(baseline.RANDOM_SEED)
     model = baseline.build_unet(input_shape=INPUT_SHAPE)
     model.compile(

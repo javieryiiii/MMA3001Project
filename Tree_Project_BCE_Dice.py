@@ -18,12 +18,28 @@ MODEL_PATH = Path(__file__).resolve().parent / "models" / "rgb_unet_bce_dice.ker
 
 
 def dice_loss(y_true, y_pred):
-    """Return one minus the baseline's smoothed Dice coefficient."""
+    """Return one minus the baseline's mean soft Dice coefficient.
+
+    Args:
+        y_true: Ground-truth tensor shaped ``(N, H, W, C)``.
+        y_pred: Soft prediction probabilities with the same shape.
+
+    Returns:
+        Scalar Dice loss; the baseline metric applies 1e-6 smoothing per image.
+    """
     return 1.0 - baseline.dice_coefficient(y_true, y_pred)
 
 
 def combined_bce_dice_loss(y_true, y_pred):
-    """Return mean binary cross-entropy plus Dice loss."""
+    """Add mean pixelwise binary cross-entropy to the baseline Dice loss.
+
+    Args:
+        y_true: Binary target tensor compatible with Keras binary cross-entropy.
+        y_pred: Sigmoid probability tensor with the same batch/spatial layout.
+
+    Returns:
+        Scalar sum of mean binary cross-entropy and mean soft Dice loss.
+    """
     bce = tf.reduce_mean(
         tf.keras.losses.binary_crossentropy(y_true, y_pred)
     )

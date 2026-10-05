@@ -15,16 +15,32 @@ GAMMA = 2.0
 
 
 def dice_loss(y_true, y_pred):
-    """Use the same smoothed Dice loss as the RGB BCE + Dice experiment."""
+    """Return one minus the baseline's mean soft Dice coefficient.
+
+    Args:
+        y_true: Ground-truth tensor shaped ``(N, H, W, C)``.
+        y_pred: Soft prediction probabilities with the same shape.
+
+    Returns:
+        Scalar Dice loss using the baseline metric's 1e-6 smoothing.
+    """
     return 1.0 - baseline.dice_coefficient(y_true, y_pred)
 
 
 def binary_focal_loss(y_true, y_pred):
-    """Mean binary focal cross-entropy for sigmoid probabilities.
+    """Compute mean binary focal cross-entropy for sigmoid probabilities.
 
     For each pixel, focal loss is BCE multiplied by (1 - p_t) ** gamma,
     where p_t is the probability assigned to the true class. No alpha/class
     balancing is added; gamma=2.0 is the only focal-loss parameter here.
+
+    Args:
+        y_true: Binary target tensor.
+        y_pred: Sigmoid probabilities with the same shape as ``y_true``; values
+        are clipped to the Keras epsilon bounds before logarithms are calculated.
+
+    Returns:
+        Scalar mean of the focal-weighted pixelwise binary cross-entropies.
     """
     y_true = tf.cast(y_true, tf.float32)
     y_pred = tf.cast(y_pred, tf.float32)
@@ -43,7 +59,15 @@ def binary_focal_loss(y_true, y_pred):
 
 
 def combined_focal_dice_loss(y_true, y_pred):
-    """Return mean binary focal loss plus the existing Dice loss."""
+    """Add mean binary focal loss to the baseline's mean soft Dice loss.
+
+    Args:
+        y_true: Binary target tensor.
+        y_pred: Sigmoid probabilities with the same shape as ``y_true``.
+
+    Returns:
+        Scalar sum of focal loss and Dice loss.
+    """
     return binary_focal_loss(y_true, y_pred) + dice_loss(y_true, y_pred)
 
 

@@ -17,11 +17,20 @@ SMOOTH = 1e-6
 
 
 def tversky_loss(y_true, y_pred):
-    """Return mean per-image Tversky loss for binary skeleton masks.
+    """Return mean per-image Tversky loss for soft binary-segmentation masks.
 
     TP counts true-positive foreground pixels. FP counts background pixels
     incorrectly predicted as foreground. FN counts foreground pixels
-    incorrectly predicted as background. Alpha > beta weights FP more strongly.
+    incorrectly predicted as background. With the fixed alpha=0.7 and beta=0.3,
+    the denominator weights FP more strongly than FN; smoothing is 1e-6.
+
+    Args:
+        y_true: Target tensor shaped ``(N, H, W, C)``.
+        y_pred: Soft prediction probabilities with the same shape.
+
+    Returns:
+        Scalar mean of one-minus-Tversky-index, reduced over non-batch axes and
+        then averaged over the batch.
     """
     y_true = tf.cast(y_true, tf.float32)
     y_pred = tf.cast(y_pred, tf.float32)

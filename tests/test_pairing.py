@@ -30,4 +30,4 @@ def test_summer_rgb_gt_pairing_uses_tree_season_and_sample_tag(tmp_path):
     assert set(pairs) == {expected_key}
     assert pairs[expected_key]["RGB"] == paths["R01N01_Summer_RGB-12-40-50.png"]
     assert pairs[expected_key]["GT"] == paths["R01N01_Summer_GT-12-40-50.png"]
-    assert "D" not in pairs[expected_key]
+    assert pairs[expected_key]["D"] == paths["R01N01_Summer_D-12-40-50.png"]

@@ -32,9 +32,9 @@ def test_rgb_gt_preprocessing_shape_crop_normalization_and_binary_mask(tmp_path)
     assert inputs.dtype == np.float32
     assert targets.dtype == np.float32
     assert np.all((inputs >= 0.0) & (inputs <= 1.0))
-    np.testing.assert_allclose(
-        inputs[0], np.asarray((30, 20, 10), dtype=np.float32)[None, None, :] / 255.0
-    )
+    expected_rgb = np.empty((256, 256, 3), dtype=np.float32)
+    expected_rgb[:] = np.asarray((30, 20, 10), dtype=np.float32) / 255.0
+    np.testing.assert_allclose(inputs[0], expected_rgb)
     np.testing.assert_array_equal(np.unique(targets), np.asarray((0.0, 1.0)))
     np.testing.assert_array_equal(targets[0, :, :, 0], original_gt == 255)
     np.testing.assert_array_equal(tree_ids, np.asarray((SAMPLE_KEY[0],)))

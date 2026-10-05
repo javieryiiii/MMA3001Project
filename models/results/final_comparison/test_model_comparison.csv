@@ -1,0 +1,5 @@
+method,input,loss_method,threshold,test_dice,test_iou
+RGB-only U-Net + BCE,RGB,BCE,0.25,0.35056,0.214901
+RGB-only U-Net + BCE + Dice,RGB,BCE + Dice,0.3,0.372018,0.231315
+RGB-D U-Net + BCE + Dice,RGB + depth,BCE + Dice,0.35,0.371957,0.231123
+Average-GT spatial-prior baseline,None,Mean of 393 training GT masks,0.2,0.379632,0.239717

@@ -1,0 +1,8 @@
+# Runtime/project dependencies
+tensorflow==2.21.0
+numpy==2.0.1
+matplotlib==3.9.2
+opencv-python==5.0.0.93
+
+# Development/testing
+pytest==8.3.3

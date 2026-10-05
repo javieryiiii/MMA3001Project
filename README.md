@@ -120,6 +120,7 @@ Examples of actual script entry points:
 ```powershell
 python Prepare_RGBD_Data.py
 python Check_RGB_GT_Alignment.py
+python Tree_Project.py
 python Tree_Project_BCE_Dice.py
 python Tree_Project_RGBD_BCE_Dice.py
 python Tree_Project_Focal_Dice.py
@@ -133,7 +134,7 @@ python Analyse_Model_Errors.py
 python Final_Model_Comparison.py
 ```
 
-The final comparison script reports supplied results; it does not load models or run inference. The original RGB+BCE checkpoint, `models/rgb_unet_baseline.keras`, is currently missing. Its established metrics are included above, but that checkpoint-based result cannot currently be reproduced from the files in this repository. The other test evaluators require their corresponding saved checkpoint and the expected dataset directory.
+The final comparison script reports supplied results; it does not load models or run inference. The original RGB+BCE checkpoint, `models/rgb_unet_baseline.keras`, is included in the repository, and `python Tree_Project.py` evaluates it on the held-out test split. The other test evaluators require their corresponding saved checkpoint and the expected dataset directory.
 
 ## Automated Tests
 
@@ -150,7 +151,7 @@ The completed suite result was **17 passed**. Coverage includes seed-based split
 - Dataset provenance, GT generation details, and a calibrated RGB-to-GT transformation are not documented.
 - Visual alignment inspection is qualitative only. Six test samples were viewed in that diagnostic, but no test metrics were used for selection and no transform was tuned from it.
 - The Average-GT baseline is a strong comparator because it exploits the common spatial distribution of the masks; the current networks did not show a consistent advantage, though they beat it on some individual test trees.
-- The original RGB+BCE checkpoint is absent, so its reported numbers are established results rather than currently checkpoint-reproducible results.
+- The original RGB+BCE checkpoint is present; reproducing its evaluation still requires the expected dataset directory and pinned environment.
 - Focal + Dice and the tested Tversky configuration have validation results only. No test results are available or reported for them.
 - Reproduction assumes the data is placed in the exact active folder name `Dataset (With Summer GT)/` and retains the expected filename pairing pattern.
 

@@ -42,7 +42,7 @@ Whole tree IDs are assigned to one split only. The split helper checks isolation
 
 ## Methods and Results
 
-Dice and IoU values are mean per-image binary scores. Each listed threshold was selected using validation data and then fixed for the held-out evaluation.
+Dice and IoU values are mean per-image binary scores. Prediction thresholds were selected using validation data. For methods evaluated on the held-out test set, the selected threshold was then fixed before test evaluation.
 
 ### Validation
 

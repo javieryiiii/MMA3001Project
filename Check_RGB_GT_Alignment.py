@@ -16,7 +16,20 @@ OVERLAY_ALPHA = 0.72
 
 
 def select_representative_keys(splits):
-    """Select a fixed, evenly spaced set of keys from all three splits."""
+    """Return a fixed set of evenly spaced sample keys from each split.
+
+    Args:
+        splits: Split dictionary returned by :func:`Tree_Project.split_by_tree`.
+
+    Returns:
+        A list of ``(split_name, sample_key)`` tuples covering each split with a
+        balanced sample count. The same keys are selected every time the script is
+        run with the same split assignments.
+
+    Raises:
+        ValueError: If a split contains fewer samples than requested for the
+            visual audit.
+    """
     selected = []
     for split_name, requested_count in SAMPLES_PER_SPLIT.items():
         split_keys = splits[split_name]["sample_keys"]
@@ -35,7 +48,13 @@ def select_representative_keys(splits):
 
 
 def add_gt_overlay(axis, processed_rgb, gt_mask):
-    """Draw unchanged GT foreground pixels as a translucent color overlay."""
+    """Plot the unchanged GT mask as a translucent overlay on processed RGB.
+
+    Args:
+        axis: Matplotlib axis onto which the overlay should be drawn.
+        processed_rgb: Preprocessed RGB image of shape ``(H, W, 3)``.
+        gt_mask: Binary ground-truth mask shaped ``(H, W)``.
+    """
     axis.imshow(processed_rgb)
     overlay = np.zeros((*gt_mask.shape, 4), dtype=np.float32)
     overlay[gt_mask] = (*OVERLAY_COLOR, OVERLAY_ALPHA)
@@ -43,7 +62,19 @@ def add_gt_overlay(axis, processed_rgb, gt_mask):
 
 
 def save_sample_figure(split_name, sample_key, modalities, processed_rgb, gt_mask):
-    """Save original, processed, GT, and overlay views for one sample."""
+    """Save a four-panel diagnostic figure for a single RGB/GT sample.
+
+    Args:
+        split_name: Name of the data split for the current sample.
+        sample_key: ``(tree_id, season, tag)`` pair identifying the sample.
+        modalities: Mapping from modality names to file paths for the sample.
+        processed_rgb: RGB image after the current preprocessing pipeline.
+        gt_mask: Binary GT mask with shape ``(256, 256)``.
+
+    Raises:
+        ValueError: If the original RGB image does not match the expected source
+            dimensions.
+    """
     original_bgr = baseline.load_image(modalities["RGB"], cv2.IMREAD_COLOR)
     if original_bgr.shape != (480, 640, 3):
         raise ValueError(
@@ -73,7 +104,17 @@ def save_sample_figure(split_name, sample_key, modalities, processed_rgb, gt_mas
 
 
 def save_overlay_montage(selected, prepared_rgb, prepared_gt, key_to_index):
-    """Save one labeled montage with overlays from all three splits."""
+    """Create a single montage showing overlay examples across all splits.
+
+    Args:
+        selected: Sequence of ``(split_name, sample_key)`` tuples to include.
+        prepared_rgb: Preprocessed RGB array shaped ``(N, 256, 256, 3)``.
+        prepared_gt: Binary GT array shaped ``(N, 256, 256)``.
+        key_to_index: Mapping from sample keys to their prepared-array index.
+
+    Returns:
+        The Matplotlib figure object used for the montage.
+    """
     columns = 5
     rows = int(np.ceil(len(selected) / columns))
     figure, axes = plt.subplots(rows, columns, figsize=(17, 3.8 * rows))
@@ -98,7 +139,20 @@ def save_overlay_montage(selected, prepared_rgb, prepared_gt, key_to_index):
 
 
 def main():
-    """Create diagnostic figures only; do not calculate model performance."""
+    """Create the alignment review figures without computing model metrics.
+
+    The script is diagnostic-only: it validates the current crop-and-resize
+    preprocessing assumption by creating overlay figures for a fixed set of train,
+    validation, and test samples.
+
+    Raises:
+        FileNotFoundError: If the dataset directory is missing.
+        RuntimeError: If no Summer RGB/GT samples are available.
+        AssertionError: If prepared sample ordering or the expected shapes do not
+            match the current preprocessing pipeline.
+    """
+    # Keep the visual check deterministic by using the same tree split and sample
+    # selection every run; this makes later comparison easier and more reliable.
     if not baseline.DATASET_DIR.is_dir():
         raise FileNotFoundError(f"Dataset folder not found: {baseline.DATASET_DIR}")
 

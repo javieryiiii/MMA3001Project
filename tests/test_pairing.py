@@ -1,7 +1,10 @@
+"""Validation tests for pairing Summer RGB, depth, and GT files by sample key."""
+
 import Tree_Project as baseline
 
 
 def touch_sample_files(directory, names):
+    """Create a set of sample files in a temporary directory and return their paths."""
     paths = {}
     for name in names:
         path = directory / name
@@ -11,6 +14,7 @@ def touch_sample_files(directory, names):
 
 
 def test_summer_rgb_gt_pairing_uses_tree_season_and_sample_tag(tmp_path):
+    """Pairing should use tree ID, season, and capture tag, not filename order."""
     paths = touch_sample_files(
         tmp_path,
         (

@@ -1,4 +1,10 @@
-"""Compare fixed-threshold neural predictions with the Average-GT prior."""
+"""Compare fixed-threshold neural predictions with the Average-GT prior.
+
+This module performs the held-out test analysis described in the project
+report: it loads the RGB and RGB-D checkpoints, compares their binary outputs to
+an average-training-mask prior, stores the per-image metrics in CSV form, and
+saves diagnostic plots for model-vs-prior behaviour.
+"""
 
 import csv
 from pathlib import Path
@@ -23,7 +29,19 @@ METHOD_NAMES = ("Average-GT", "RGB BCE + Dice", "RGB-D BCE + Dice")
 
 
 def per_image_binary_scores(y_true, y_pred):
-    """Return binary Dice and IoU arrays, one score per image."""
+    """Compute per-image Dice and IoU scores for two binary masks.
+
+    Args:
+        y_true: Ground-truth masks or probability maps shaped like ``(N, H, W, C)``.
+        y_pred: Predicted masks or probabilities with the same shape.
+
+    Returns:
+        A tuple ``(dice, iou)`` where each element is a NumPy array of shape
+        ``(N,)`` containing the Dice or IoU value for each image.
+
+    Raises:
+        ValueError: If ``y_true`` and ``y_pred`` have inconsistent shapes.
+    """
     true_masks = np.asarray(y_true) >= 0.5
     predicted_masks = np.asarray(y_pred, dtype=bool)
     if true_masks.shape != predicted_masks.shape:
@@ -40,7 +58,22 @@ def per_image_binary_scores(y_true, y_pred):
 
 
 def evaluate_checkpoint(model_path, inputs, threshold, label):
-    """Load one checkpoint for inference and apply its fixed threshold."""
+    """Load a trained checkpoint and convert logits/probabilities to a binary mask.
+
+    Args:
+        model_path: Path to a saved Keras model checkpoint.
+        inputs: Sample tensors for inference.
+        threshold: Decision threshold applied to the sigmoid output.
+        label: Human-readable label used in error and status messages.
+
+    Returns:
+        A boolean mask array shaped ``(N, 256, 256, 1)`` with the thresholded
+        predictions applied.
+
+    Raises:
+        FileNotFoundError: If the checkpoint does not exist.
+        ValueError: If the loaded model produces an unexpected output shape.
+    """
     if not model_path.is_file():
         raise FileNotFoundError(f"Checkpoint for {label} not found: {model_path}")
     print(f"Loading {label} checkpoint for inference only: {model_path}")
@@ -56,7 +89,15 @@ def evaluate_checkpoint(model_path, inputs, threshold, label):
 
 
 def save_per_image_csv(records):
-    """Write all per-sample accuracy and prediction-similarity values."""
+    """Save the per-sample report as a CSV table for downstream analysis.
+
+    Args:
+        records: Iterable of record dictionaries containing per-tree Dice, IoU,
+            and similarity metrics.
+
+    Returns:
+        None. The file is written to :data:`CSV_PATH`.
+    """
     fieldnames = (
         "tree_id",
         "season",
@@ -81,7 +122,14 @@ def save_per_image_csv(records):
 
 
 def save_score_distribution_plot(records):
-    """Plot per-image Dice distributions for all three methods."""
+    """Plot the per-image Dice distribution for prior, RGB, and RGB-D predictions.
+
+    Args:
+        records: Per-image evaluation records generated during held-out scoring.
+
+    Returns:
+        None. A PNG summary plot is written to the results directory.
+    """
     values = [
         [record["prior_dice"] for record in records],
         [record["rgb_dice"] for record in records],
@@ -101,7 +149,14 @@ def save_score_distribution_plot(records):
 
 
 def save_difference_plot(records):
-    """Plot per-tree neural-network Dice improvements over the prior."""
+    """Plot the per-tree Dice gap between the neural models and the prior.
+
+    Args:
+        records: Per-image records containing the improvement-over-prior columns.
+
+    Returns:
+        None. A PNG histogram is written to the results directory.
+    """
     differences = (
         [record["rgb_dice_improvement_over_prior"] for record in records],
         [record["rgbd_dice_improvement_over_prior"] for record in records],
@@ -125,7 +180,21 @@ def save_difference_plot(records):
 
 def save_example_montage(category, indices, records, rgbd_inputs, targets,
                          prior_binary, rgb_binary, rgbd_binary):
-    """Save four aligned RGB, depth, GT, prior, RGB and RGB-D examples."""
+    """Create a montage that visually compares the prior and two neural models.
+
+    Args:
+        category: Descriptive key used to name the output plot file.
+        indices: Selected sample indices to display in the montage.
+        records: Per-image evaluation records used for row labels.
+        rgbd_inputs: RGB-D input batch containing RGB and depth channels.
+        targets: Ground-truth target masks for the selected samples.
+        prior_binary: Thresholded Average-GT predictions.
+        rgb_binary: Thresholded RGB model predictions.
+        rgbd_binary: Thresholded RGB-D model predictions.
+
+    Returns:
+        None. The montage is saved under the results directory.
+    """
     column_names = (
         "RGB",
         "Depth",
@@ -174,7 +243,16 @@ def save_example_montage(category, indices, records, rgbd_inputs, targets,
 
 
 def print_ranked_ids(label, indices, records):
-    """Print selected tree/sample IDs and their Dice differences."""
+    """Print a ranked subset of sample IDs with their score deltas.
+
+    Args:
+        label: Human-readable heading for the ranking section.
+        indices: Sample indices sorted by ranking score.
+        records: Per-image records containing the reported metrics.
+
+    Returns:
+        None. The ranked sample summaries are written to stdout.
+    """
     print(label)
     for index in indices:
         record = records[index]
@@ -192,7 +270,14 @@ def print_ranked_ids(label, indices, records):
 
 
 def print_summary(records):
-    """Report mean accuracy, paired wins, similarities and extremes."""
+    """Print a compact summary of mean accuracy, gains, and ranking extremes.
+
+    Args:
+        records: Per-image evaluation rows generated by the held-out analysis.
+
+    Returns:
+        None. Summary lines are written to stdout.
+    """
     count = len(records)
     print("\nMean per-image test accuracy")
     for label, dice_key, iou_key in (
@@ -269,7 +354,26 @@ def print_summary(records):
 
 
 def main():
-    """Run fixed-threshold test diagnostics without model selection or training."""
+    """Run the fixed-threshold comparison workflow for the held-out test set.
+
+    The analysis verifies that the Summer RGB/GT sample set and RGB-D triplets are
+    aligned, rebuilds the Average-GT prior from training masks, evaluates the
+    fixed-threshold RGB and RGB-D checkpoints, and writes the CSV and plotting
+    outputs needed for the project report.
+
+    Returns:
+        None.
+
+    Raises:
+        FileNotFoundError: If the dataset directory is missing.
+        RuntimeError: If any Summer RGB-D-GT groups are incomplete.
+        ValueError: If sample ordering or split consistency checks fail.
+        AssertionError: If the expected test-set size or preprocessing assumptions
+            disagree with the project's pipeline.
+    """
+    # The analysis is deliberately strict: the held-out set must be consistent
+    # across RGB, RGB-D, and Average-GT checks before any comparison metrics are
+    # computed or reported.
     if not baseline.DATASET_DIR.is_dir():
         raise FileNotFoundError(f"Dataset folder not found: {baseline.DATASET_DIR}")
 
@@ -294,6 +398,8 @@ def main():
             f"Expected {EXPECTED_TEST_SAMPLES} test samples, got {len(test_keys)}."
         )
 
+    # Compute the spatial prior from the training masks only, keeping the test set
+    # entirely unseen during this step.
     train_keys = splits["train"]["sample_keys"]
     gt_paths = average_baseline.find_summer_gt_files(baseline.DATASET_DIR)
     training_masks = average_baseline.load_ground_truth_masks(train_keys, gt_paths)
@@ -304,6 +410,8 @@ def main():
         (EXPECTED_TEST_SAMPLES, 256, 256, 1),
     )
 
+    # Prepare both the standard RGB evaluation set and the RGB-D variant so that
+    # the same held-out samples are compared under the same thresholding rules.
     test_pairs = {key: summer_pairs[key] for key in test_keys}
     rgb_inputs, targets, _, rgb_keys = baseline.prepare_rgb_gt_dataset(test_pairs)
     test_triplets = {key: triplets[key] for key in test_keys}
@@ -315,6 +423,7 @@ def main():
     if not np.array_equal(targets, rgbd_targets):
         raise AssertionError("RGB and RGB-D preprocessing produced different GTs.")
 
+    # Evaluate the checkpoint under the fixed threshold chosen during validation.
     rgb_binary = evaluate_checkpoint(
         rgb_experiment.MODEL_PATH, rgb_inputs, RGB_THRESHOLD, "RGB BCE + Dice"
     )

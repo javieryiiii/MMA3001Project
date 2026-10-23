@@ -1,3 +1,5 @@
+"""Tests for deterministic tree-level data splitting and overlap guarantees."""
+
 import numpy as np
 import pytest
 
@@ -5,6 +7,7 @@ import Tree_Project as baseline
 
 
 def make_synthetic_samples():
+    """Build a synthetic dataset with repeated tree IDs and multiple samples per tree."""
     tree_ids = np.asarray([f"tree-{index // 2:02d}" for index in range(40)])
     sample_keys = [
         (tree_id, "Summer", f"sample-{index:02d}")
@@ -14,6 +17,7 @@ def make_synthetic_samples():
 
 
 def normalize_splits(splits):
+    """Convert each split to a hashable summary for equality comparisons."""
     return {
         name: (
             frozenset(split["tree_ids"]),
@@ -25,6 +29,7 @@ def normalize_splits(splits):
 
 
 def test_seed_42_split_is_deterministic():
+    """The same seed should produce the same deterministic train/validation/test split."""
     tree_ids, sample_keys = make_synthetic_samples()
 
     first = baseline.split_by_tree(tree_ids, sample_keys, seed=42)
@@ -36,6 +41,7 @@ def test_seed_42_split_is_deterministic():
 
 
 def test_tree_ids_are_isolated_between_splits():
+    """No tree ID should appear in more than one split."""
     tree_ids, sample_keys = make_synthetic_samples()
     splits = baseline.split_by_tree(tree_ids, sample_keys, seed=42)
 
@@ -49,6 +55,7 @@ def test_tree_ids_are_isolated_between_splits():
 
 
 def test_tree_split_isolation_rejects_overlap():
+    """The isolation checker should fail when a tree appears in multiple splits."""
     overlapping_splits = {
         "train": {"tree_ids": {"tree-shared"}},
         "validation": {"tree_ids": {"tree-shared"}},

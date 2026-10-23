@@ -1,3 +1,5 @@
+"""Checks for preprocessing correctness in the RGB and RGB-D pipelines."""
+
 import cv2
 import numpy as np
 import pytest
@@ -10,6 +12,7 @@ SAMPLE_KEY = ("R01N01", "Summer", "synthetic-sample")
 
 
 def write_rgb_gt_pair(directory, rgb_shape=(480, 640, 3)):
+    """Create a synthetic RGB/GT pair that matches the project input geometry."""
     rgb_path = directory / "R01N01_Summer_RGB-synthetic-sample.png"
     gt_path = directory / "R01N01_Summer_GT-synthetic-sample.png"
     rgb_bgr = np.zeros(rgb_shape, dtype=np.uint8)
@@ -23,6 +26,7 @@ def write_rgb_gt_pair(directory, rgb_shape=(480, 640, 3)):
 
 
 def test_rgb_gt_preprocessing_shape_crop_normalization_and_binary_mask(tmp_path):
+    """RGB preprocessing should crop, resize, normalize, and binarize GT correctly."""
     pairs, original_gt = write_rgb_gt_pair(tmp_path)
 
     inputs, targets, tree_ids, sample_keys = baseline.prepare_rgb_gt_dataset(pairs)
@@ -42,6 +46,7 @@ def test_rgb_gt_preprocessing_shape_crop_normalization_and_binary_mask(tmp_path)
 
 
 def test_rgbd_preprocessing_appends_one_normalized_depth_channel(tmp_path):
+    """RGB-D preprocessing should append a normalized depth channel without changing GT."""
     pairs, _ = write_rgb_gt_pair(tmp_path)
     key = SAMPLE_KEY
     depth_path = tmp_path / "R01N01_Summer_D-synthetic-sample.png"
@@ -67,6 +72,7 @@ def test_rgbd_preprocessing_appends_one_normalized_depth_channel(tmp_path):
 
 
 def test_rgb_preprocessing_rejects_unexpected_original_dimensions(tmp_path):
+    """Unexpected RGB dimensions should raise a clear ValueError before preprocessing."""
     pairs, _ = write_rgb_gt_pair(tmp_path, rgb_shape=(479, 640, 3))
 
     with pytest.raises(ValueError, match="Unexpected RGB dimensions"):

@@ -1,3 +1,9 @@
+"""Regression tests for the project loss functions.
+
+These checks validate the loss implementations against analytical references and
+ensure the combined losses remain faithful to their component definitions.
+"""
+
 import numpy as np
 import tensorflow as tf
 
@@ -8,6 +14,7 @@ import Tree_Project_Tversky as tversky_experiment
 
 
 def test_dice_loss_is_one_minus_existing_smoothed_dice():
+    """Dice loss should equal one minus the baseline smoothed Dice score."""
     ground_truth = tf.constant([[[[1.0], [1.0], [0.0], [0.0]]]])
     prediction = tf.constant([[[[1.0], [0.0], [1.0], [0.0]]]])
 
@@ -17,6 +24,7 @@ def test_dice_loss_is_one_minus_existing_smoothed_dice():
 
 
 def test_combined_bce_dice_loss_is_sum_of_its_components():
+    """The combined BCE + Dice objective should equal the sum of both terms."""
     ground_truth = tf.constant([[[[1.0], [0.0], [1.0], [0.0]]]])
     prediction = tf.constant([[[[0.8], [0.2], [0.4], [0.1]]]])
     bce = tf.reduce_mean(
@@ -33,6 +41,7 @@ def test_combined_bce_dice_loss_is_sum_of_its_components():
 
 
 def test_binary_focal_loss_matches_numpy_reference():
+    """Binary focal loss should match the explicit NumPy reference formula."""
     ground_truth = np.asarray([1.0, 0.0], dtype=np.float32).reshape(1, 1, 2, 1)
     prediction = np.asarray([0.8, 0.2], dtype=np.float32).reshape(1, 1, 2, 1)
     epsilon = tf.keras.backend.epsilon()
@@ -57,6 +66,7 @@ def test_binary_focal_loss_matches_numpy_reference():
 
 
 def test_combined_focal_dice_loss_is_sum_of_its_components():
+    """The mixed focal + Dice loss should equal the sum of its components."""
     ground_truth = tf.constant([[[[1.0], [0.0]]]])
     prediction = tf.constant([[[[0.7], [0.3]]]])
     expected = float(focal_experiment.binary_focal_loss(ground_truth, prediction))
@@ -69,6 +79,7 @@ def test_combined_focal_dice_loss_is_sum_of_its_components():
 
 
 def test_tversky_loss_matches_fixed_alpha_beta_reference():
+    """Tversky loss should reproduce the fixed alpha/beta reference formulation."""
     ground_truth = np.asarray([1.0, 1.0, 0.0, 0.0], dtype=np.float32).reshape(
         1, 1, 4, 1
     )
